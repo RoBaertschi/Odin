@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Threaded Procedure Body Checking in Odin</title>
+  <style>
+    :root {
+      --ink: #171717;
+      --muted: #5f6368;
+      --line: #d9dee5;
+      --paper: #f8f8f5;
+      --panel: #ffffff;
+      --blue: #245b94;
+      --green: #166a45;
+      --red: #a23535;
+      --yellow: #fff6dd;
+      --code: #f0f2f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(1080px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 4vw, 3.3rem);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1.35rem;
+    }
+    h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+    p { margin: 0 0 12px; }
+    :not(pre) > code {
+      background: var(--code);
+      padding: 0.12rem 0.32rem;
+      border-radius: 4px;
+      font: 0.92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    pre {
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      background: #111827;
+      color: #f9fafb;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+    .lede {
+      max-width: 840px;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .stage {
+      min-height: 134px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 13px;
+      background: #fff;
+    }
+    .stage strong {
+      display: block;
+      color: var(--blue);
+      margin-bottom: 6px;
+    }
+    .barrier {
+      border-color: #c7a84f;
+      background: var(--yellow);
+    }
+    .thread-grid {
+      display: grid;
+      grid-template-columns: 180px repeat(4, 1fr);
+      gap: 8px;
+      align-items: stretch;
+      margin-top: 10px;
+    }
+    .thread-cell {
+      min-height: 54px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fff;
+    }
+    .thread-cell.head {
+      background: #eef4fb;
+      color: var(--blue);
+      font-weight: 700;
+    }
+    .table {
+      display: grid;
+      gap: 8px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+    .term {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 700;
+    }
+    .callout {
+      border-left: 4px solid var(--blue);
+      padding-left: 14px;
+    }
+    .warning {
+      background: var(--yellow);
+      border-color: #e4cf8d;
+    }
+    .quiz {
+      display: grid;
+      gap: 12px;
+    }
+    .question {
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    .choices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--blue); }
+    button.correct {
+      border-color: var(--green);
+      background: #edf8f1;
+      color: var(--green);
+    }
+    button.wrong {
+      border-color: var(--red);
+      background: #fff1f1;
+      color: var(--red);
+    }
+    .feedback {
+      min-height: 24px;
+      margin-top: 8px;
+      color: var(--muted);
+    }
+    .feedback.good { color: var(--green); }
+    .feedback.bad { color: var(--red); }
+    .source {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    @media (max-width: 860px) {
+      .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column: span 12; }
+      .pipeline { grid-template-columns: 1fr; }
+      .thread-grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Odin Threads Procedure Bodies After Declaration Checking</h1>
+      <p class="lede">Your model is mostly right: Odin resolves global declarations first, and procedure declarations queue body work for later. Then the queued bodies are checked by worker threads after a phase barrier.</p>
+    </header>
+
+    <section class="grid">
+      <article class="panel span-12">
+        <h2>The Shape</h2>
+        <div class="pipeline">
+          <div class="stage">
+            <strong>Collect Entities</strong>
+            <p>Build named entities and scopes from parsed files.</p>
+          </div>
+          <div class="stage">
+            <strong>Check Globals</strong>
+            <p>Resolve declarations, types, constants, variables, and procedure signatures.</p>
+          </div>
+          <div class="stage">
+            <strong>Queue Bodies</strong>
+            <p><code>check_proc_decl</code> stores <code>ProcInfo</code> instead of checking the block immediately.</p>
+          </div>
+          <div class="stage barrier">
+            <strong>Phase Barrier</strong>
+            <p>Global declaration state is stable enough for body checking.</p>
+          </div>
+          <div class="stage">
+            <strong>Check Bodies</strong>
+            <p>Each worker checks procedure statements and expressions using the resolved signatures.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel span-7">
+        <h2>What Happens In A Procedure Declaration</h2>
+        <p><code>check_proc_decl</code> checks the procedure type, attributes, entry-point rules, calling convention, foreign/export constraints, and similar declaration-level facts. If the procedure has a body and is not an unspecialized polymorphic procedure, it calls <code>check_procedure_later</code>.</p>
+        <pre><code>if (pl->body != nullptr) {
+    d->scope = ctx->scope;
+    if (!pt->is_polymorphic) {
+        check_procedure_later(ctx->checker, ctx->file,
+                              e->token, d, proc_type,
+                              pl->body, pl->tags);
+    }
+}</code></pre>
+        <p class="source">Source path: <code>src/check_decl.cpp</code>, inside <code>check_proc_decl</code>.</p>
+      </article>
+
+      <aside class="panel span-5 callout">
+        <h2>The Design Rule</h2>
+        <p>Do not type-check a procedure body while its surrounding world is still being discovered. First make names, signatures, and declaration records stable. Then body checking can run in parallel because each body mostly consumes that shared semantic state.</p>
+      </aside>
+
+      <article class="panel span-6">
+        <h2>The Queue Switch</h2>
+        <p><code>check_procedure_later</code> has two modes. Before body checking begins, it appends to <code>c-&gt;procs_to_check</code>. During threaded body checking, newly discovered body work is submitted directly to the thread pool.</p>
+        <pre><code>if (global_procedure_body_in_worker_queue.load()) {
+    thread_pool_add_task(check_proc_info_worker_proc, info);
+} else {
+    array_add(&c->procs_to_check, info);
+}</code></pre>
+        <p class="source">Source path: <code>src/checker.cpp</code>, <code>check_procedure_later</code>.</p>
+      </article>
+
+      <article class="panel span-6">
+        <h2>The Body Phase</h2>
+        <p><code>check_procedure_bodies</code> flips <code>global_procedure_body_in_worker_queue</code>, submits every queued <code>ProcInfo</code> as a worker task, clears the queue, waits for the thread pool, then flips the flag back.</p>
+        <pre><code>global_procedure_body_in_worker_queue = true;
+
+for_array(i, c->procs_to_check) {
+    thread_pool_add_task(check_proc_info_worker_proc,
+                         c->procs_to_check[i]);
+}
+array_clear(&c->procs_to_check);
+
+thread_pool_wait();
+global_procedure_body_in_worker_queue = false;</code></pre>
+        <p class="source">Source path: <code>src/checker.cpp</code>, <code>check_procedure_bodies</code>.</p>
+      </article>
+
+      <article class="panel span-12">
+        <h2>What Each Worker Does</h2>
+        <div class="thread-grid">
+          <div class="thread-cell head">Per worker</div>
+          <div class="thread-cell">Take <code>ProcInfo</code></div>
+          <div class="thread-cell">Build/reset <code>CheckerContext</code></div>
+          <div class="thread-cell">Run <code>check_proc_body</code></div>
+          <div class="thread-cell">Record body checked state</div>
+          <div class="thread-cell head">Shared state touched carefully</div>
+          <div class="thread-cell">Procedure checked mutex</div>
+          <div class="thread-cell">MPSC queues</div>
+          <div class="thread-cell">Dependency sets under locks</div>
+          <div class="thread-cell">Global untyped queue</div>
+        </div>
+      </article>
+
+      <article class="panel span-7">
+        <h2>Why This Is Safe Enough</h2>
+        <div class="table">
+          <div class="row">
+            <div class="term">Signatures first</div>
+            <div>Calls can be checked because callee procedure types already exist.</div>
+          </div>
+          <div class="row">
+            <div class="term">Bodies later</div>
+            <div>Statement and expression checking is deferred until the checker has passed the global declaration phase.</div>
+          </div>
+          <div class="row">
+            <div class="term">Per-thread maps</div>
+            <div>Each worker has its own <code>UntypedExprInfoMap</code>, avoiding one obvious shared mutable hot spot.</div>
+          </div>
+          <div class="row">
+            <div class="term">MPSC queues</div>
+            <div>Workers can enqueue discovered entities and untyped-expression data, and later phases merge queues into arrays.</div>
+          </div>
+          <div class="row">
+            <div class="term">Proc checked state</div>
+            <div><code>proc_checked_mutex</code> and <code>proc_checked_state</code> prevent two workers from checking the same body at once.</div>
+          </div>
+        </div>
+      </article>
+
+      <aside class="panel span-5 warning">
+        <h2>The Nuance</h2>
+        <p>Odin is not simply "single-thread globals, threaded bodies." It also parallelizes some earlier collection/export/dependency work. But the transferable checker architecture is the phase split: declaration resolution creates stable semantic facts; body checking consumes them in parallel.</p>
+      </aside>
+
+      <article class="panel span-12">
+        <h2>Transfer To A C Compiler</h2>
+        <p>A C compiler can use the same shape:</p>
+        <pre><code>collect declarations
+resolve file-scope types, objects, and function signatures
+queue function bodies
+wait until global declarations are stable
+parallel_for each queued function body:
+    create thread-local checker context
+    check statements and expressions
+    enqueue discovered diagnostics / references / local metadata
+merge worker queues
+run final validation passes</code></pre>
+        <p>The hard boundary is important: function bodies may refer to global functions, global variables, typedefs, enum constants, and struct tags. Those semantic objects should exist before body workers start.</p>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Check Your Model</h2>
+        <div class="quiz" id="quiz"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const questions = [
+      {
+        prompt: "When Odin checks a non-polymorphic procedure declaration with a body, what happens to the body?",
+        answer: "It is queued for later",
+        why: "The declaration phase resolves the signature and stores ProcInfo; the body is checked later."
+      },
+      {
+        prompt: "What is the main reason for the phase barrier before body checking?",
+        answer: "Global semantic state is stable",
+        why: "Body workers can rely on resolved entities, signatures, scopes, and declaration records."
+      },
+      {
+        prompt: "What prevents two workers from checking the same procedure body at the same time?",
+        answer: "Checked-state mutex",
+        why: "Odin uses a procedure checked mutex plus checked-state flags around body checking."
+      },
+      {
+        prompt: "If body checking discovers another procedure body that must be checked while workers are active, where does it go?",
+        answer: "Directly to the thread pool",
+        why: "During the body phase, check_procedure_later submits new work as worker tasks."
+      }
+    ];
+    const choices = [
+      "It is queued for later",
+      "It is checked immediately",
+      "Global semantic state is stable",
+      "All parsing is finished",
+      "Checked-state mutex",
+      "The AST lock",
+      "Directly to the thread pool",
+      "Back to import collection"
+    ];
+    const quiz = document.querySelector("#quiz");
+    questions.forEach((q, index) => {
+      const root = document.createElement("section");
+      root.className = "question";
+      const title = document.createElement("h3");
+      title.textContent = `${index + 1}. ${q.prompt}`;
+      const buttons = document.createElement("div");
+      buttons.className = "choices";
+      const feedback = document.createElement("div");
+      feedback.className = "feedback";
+      choices.forEach(choice => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = choice;
+        button.addEventListener("click", () => {
+          buttons.querySelectorAll("button").forEach(b => {
+            b.classList.remove("correct", "wrong");
+          });
+          const ok = choice === q.answer;
+          button.classList.add(ok ? "correct" : "wrong");
+          feedback.className = `feedback ${ok ? "good" : "bad"}`;
+          feedback.textContent = ok ? q.why : `Not quite. ${q.why}`;
+        });
+        buttons.appendChild(button);
+      });
+      root.append(title, buttons, feedback);
+      quiz.appendChild(root);
+    });
+  </script>
+</body>
+</html>

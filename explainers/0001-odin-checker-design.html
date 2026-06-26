@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Odin Checker Design</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d2430;
+      --muted: #5e6878;
+      --line: #d7dde7;
+      --panel: #f7f9fc;
+      --accent: #146c5c;
+      --accent-2: #7a4b00;
+      --code: #eef2f7;
+      --white: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--white);
+    }
+    main {
+      width: min(1080px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 34px 0 56px;
+    }
+    h1, h2, h3 { line-height: 1.15; margin: 0; letter-spacing: 0; }
+    h1 { font-size: clamp(2rem, 4vw, 3.4rem); max-width: 820px; }
+    h2 { font-size: 1.45rem; margin-top: 34px; }
+    h3 { font-size: 1rem; margin-top: 18px; }
+    p { max-width: 820px; color: var(--muted); }
+    code {
+      background: var(--code);
+      padding: 0.12rem 0.35rem;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    .lede {
+      font-size: 1.15rem;
+      margin-top: 18px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      background: var(--panel);
+    }
+    .card p { margin-bottom: 0; }
+    .pipeline {
+      margin-top: 18px;
+      display: grid;
+      gap: 10px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--white);
+    }
+    .num {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: white;
+      font-weight: 700;
+    }
+    .step strong { display: block; }
+    .step span { color: var(--muted); }
+    .callout {
+      border-left: 4px solid var(--accent-2);
+      background: #fff8ea;
+      padding: 14px 16px;
+      margin-top: 22px;
+      max-width: 820px;
+    }
+    pre {
+      overflow-x: auto;
+      background: #f4f6fa;
+      color: #17202f;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      line-height: 1.6;
+      font-size: 0.96rem;
+      tab-size: 2;
+    }
+    pre code {
+      display: block;
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      border-radius: 0;
+      font-size: inherit;
+      white-space: pre;
+    }
+    .quiz {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 18px;
+    }
+    button {
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: white;
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font: inherit;
+      margin-top: 8px;
+    }
+    .answer {
+      display: none;
+      margin-top: 10px;
+      color: var(--ink);
+    }
+    .answer.visible { display: block; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Odin's Checker Is A Phased Semantic Pipeline</h1>
+    <p class="lede">The transferable design is not "make type checking threaded". It is: split semantic analysis into phases, make declarations resolvable before bodies, and only parallelize work units whose shared state has already stabilized.</p>
+
+    <section>
+      <h2>Core Model</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Entity</h3>
+          <p>A named semantic object. It carries kind, type, scope, state, flags, source order, and a link back to its declaration record.</p>
+        </article>
+        <article class="card">
+          <h3>Scope</h3>
+          <p>A name-to-entity map with a parent. Package scopes, file scopes, type scopes, procedure scopes, and block scopes all use this idea.</p>
+        </article>
+        <article class="card">
+          <h3>Declaration Record</h3>
+          <p>The unresolved payload for a declaration. It lets Odin collect names first, then resolve type expressions, initializers, signatures, and bodies later.</p>
+        </article>
+        <article class="card">
+          <h3>Operand</h3>
+          <p>The result of expression checking. It is richer than a type: it records whether syntax produced a value, variable, constant, type, proc group, no-value, or invalid expression.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Pipeline</h2>
+      <div class="pipeline">
+        <div class="step"><div class="num">1</div><div><strong>Create package and file scopes</strong><span>Build the containers that declarations will be inserted into.</span></div></div>
+        <div class="step"><div class="num">2</div><div><strong>Collect entities</strong><span>Walk files, create entities and declaration records, insert names, enqueue unresolved entities.</span></div></div>
+        <div class="step"><div class="num">3</div><div><strong>Resolve imports and exports</strong><span>Order packages by import dependencies and make exported entities visible through package scopes.</span></div></div>
+        <div class="step"><div class="num">4</div><div><strong>Resolve global entities</strong><span>Check constants, type names, global variables, procedure signatures, and procedure groups. Entity states catch declaration cycles.</span></div></div>
+        <div class="step"><div class="num">5</div><div><strong>Check procedure bodies</strong><span>Procedure signatures are known, so bodies can be checked as mostly independent work items.</span></div></div>
+        <div class="step"><div class="num">6</div><div><strong>Run final semantic passes</strong><span>Scope usage, type cycles, inline cycles, init order, dependency sets, entry point checks, and type-info tables.</span></div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Threading Rule</h2>
+      <p>Odin uses parallelism where each worker can own a context and report results through queues. It uses phase barriers before later phases read those results as stable global state.</p>
+      <pre><code>threaded:
+  collect entities per file
+  export entities per package
+  check procedure bodies
+
+serialized or barriered:
+  import dependency order
+  global entity resolution
+  queue-to-array merging
+  final whole-program checks</code></pre>
+      <div class="callout">
+        For a C compiler, the safest first transfer is single-threaded declaration and type resolution, followed by parallel function-body checking once all file-scope declarations are known.
+      </div>
+    </section>
+
+    <section>
+      <h2>C Compiler Transfer</h2>
+      <pre><code>parse translation units
+create scopes
+collect declarations
+resolve file-scope declaration types
+check global initializers
+parallel check function bodies
+merge diagnostics and semantic facts
+run whole-program checks</code></pre>
+      <p>The key structure to copy is the separation between a name-bearing entity and the declaration record that will later resolve it. That is what allows "declare first, check later" without losing source information.</p>
+    </section>
+
+    <section class="quiz">
+      <h2>Quick Check</h2>
+      <p>Why does Odin check procedure bodies after resolving procedure declarations?</p>
+      <button type="button" onclick="document.querySelector('.answer').classList.toggle('visible')">Show answer</button>
+      <p class="answer">Because other code can call a procedure once its entity and signature are known. The body can be checked later as a separate work item, which makes dependency handling easier and creates a natural unit for parallel checking.</p>
+    </section>
+  </main>
+</body>
+</html>
