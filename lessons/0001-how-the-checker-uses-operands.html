@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How The Checker Uses Operands</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="small">Odin checker lesson 0001</p>
+    <h1>How The Checker Uses Operands</h1>
+    <p class="lede">You already know what an operand represents. This lesson is about the operational pattern: the checker fills an operand, normalizes it for the current context, stores its stable facts, then lets enclosing code ask narrow semantic questions.</p>
+  </header>
+
+  <h2>The One-Sentence Model</h2>
+  <p>An operand is the checker's scratch result for "I checked this expression; here is how it can be used now."</p>
+  <p>That "how" is the <code>AddressingMode</code>. Odin defines modes for invalid expressions, no-value expressions, values, variables, constants, types, builtins, procedure groups, map indexes, optional-ok forms, SOA variables, and swizzles. Source: <a href="../src/parser.hpp#L9">src/parser.hpp:9</a>.</p>
+
+  <h2>The Lifecycle</h2>
+  <div class="grid">
+    <section class="card">
+      <h3>Produce</h3>
+      <p>Expression-specific code writes into an <code>Operand *</code>. <code>check_ident</code> is the clearest case: lookup an entity, then classify it as constant, variable, procedure value, builtin, type, or procedure group. Source: <a href="../src/check_expr.cpp#L1841">src/check_expr.cpp:1841</a>.</p>
+    </section>
+    <section class="card">
+      <h3>Normalize</h3>
+      <p>Wrapper entrypoints decide whether that result is legal here. <code>check_expr</code> rejects <code>NoValue</code>, rejects <code>Type</code>, then rejects tuples where a single value is expected. Source: <a href="../src/check_expr.cpp#L12614">src/check_expr.cpp:12614</a>.</p>
+    </section>
+    <section class="card">
+      <h3>Store</h3>
+      <p><code>check_expr_base</code> records the operand facts on the AST with <code>add_type_and_value</code>. This is why later code can inspect <code>expr-&gt;tav</code>. Sources: <a href="../src/check_expr.cpp#L12580">src/check_expr.cpp:12580</a>, <a href="../src/checker.cpp#L1925">src/checker.cpp:1925</a>.</p>
+    </section>
+    <section class="card">
+      <h3>Consume</h3>
+      <p>Statement and declaration checkers ask context-specific questions. <code>when</code> asks for a constant boolean; <code>if</code> asks for a boolean; assignment asks whether right operands fit left operands. Sources: <a href="../src/check_stmt.cpp#L676">src/check_stmt.cpp:676</a>, <a href="../src/check_stmt.cpp#L2581">src/check_stmt.cpp:2581</a>, <a href="../src/check_stmt.cpp#L2518">src/check_stmt.cpp:2518</a>.</p>
+    </section>
+  </div>
+
+  <h2>Trace One Identifier</h2>
+  <div class="trace">
+    <p>Imagine the checker sees <code>x</code> in an expression. It calls the identifier path and starts with an invalid operand. If scope lookup fails, it reports an undeclared-name error and leaves the operand invalid.</p>
+    <p>If lookup succeeds, the entity kind drives the operand mode. A constant copies its exact value and becomes <code>Addressing_Constant</code>. A variable becomes <code>Addressing_Variable</code>. A type name becomes <code>Addressing_Type</code>. A builtin becomes <code>Addressing_Builtin</code>. An unresolved overload set becomes <code>Addressing_ProcGroup</code>.</p>
+    <p>The enclosing context then decides what to do. A normal expression context rejects a type. A call context may accept a builtin or procedure group. An assignment context cares whether the left side is assignable and whether the right side can be assigned to its type.</p>
+  </div>
+
+  <h2>Why This Matters</h2>
+  <p>The checker avoids baking every context rule into expression checking. The expression checker says, "this is what you have." The enclosing syntax says, "this is what I require."</p>
+  <p>For a C compiler, this maps cleanly to separate predicates: <code>is_lvalue</code>, <code>is_modifiable_lvalue</code>, <code>is_integer_constant_expr</code>, <code>is_scalar</code>, <code>can_assign</code>, and <code>usual_arithmetic_conversions</code>. The operand is the object those predicates inspect and sometimes update.</p>
+
+  <h2>Practice</h2>
+  <section class="quiz" data-answer="1">
+    <p><strong>1. What should a C-style assignment checker consume?</strong></p>
+    <button>Raw AST nodes</button>
+    <button>Checked operands</button>
+    <button>Parser tokens</button>
+    <p class="answer"></p>
+  </section>
+
+  <section class="quiz" data-answer="2">
+    <p><strong>2. Why does Odin store <code>TypeAndValue</code> on AST nodes?</strong></p>
+    <button>To parse later</button>
+    <button>To emit tokens</button>
+    <button>To reuse facts</button>
+    <p class="answer"></p>
+  </section>
+
+  <section class="quiz" data-answer="0">
+    <p><strong>3. Which context requires a constant boolean operand?</strong></p>
+    <button><code>when</code> statement</button>
+    <button><code>if</code> statement</button>
+    <button>plain assignment</button>
+    <p class="answer"></p>
+  </section>
+
+  <h2>Primary Source</h2>
+  <p>Read <a href="../src/check_expr.cpp#L12580">src/check_expr.cpp:12580</a> first. That small wrapper shows the key management pattern: check an expression, record untyped information if needed, validate disallowed RTTI use, then store <code>TypeAndValue</code>.</p>
+  <p>Keep the reference sheet open while reading: <a href="../reference/0001-operand-checker-lifecycle.html">Operand Checker Lifecycle</a>.</p>
+  <p class="small">Ask followup questions about any step that still feels too implicit. Good next questions: "how does assignment use lhs operand modes?", "how are untyped constants updated?", or "how would this become C lvalue handling?"</p>
+</main>
+
+<script>
+for (const quiz of document.querySelectorAll(".quiz")) {
+  const answer = Number(quiz.dataset.answer);
+  const buttons = [...quiz.querySelectorAll("button")];
+  const output = quiz.querySelector(".answer");
+  buttons.forEach((button, index) => {
+    button.addEventListener("click", () => {
+      buttons.forEach((b) => b.classList.remove("correct", "wrong"));
+      if (index === answer) {
+        button.classList.add("correct");
+        output.textContent = "Correct. The context consumes the checked semantic result, not just syntax.";
+      } else {
+        button.classList.add("wrong");
+        buttons[answer].classList.add("correct");
+        output.textContent = "Not quite. Look for the context asking a question of mode, type, or value.";
+      }
+    });
+  });
+}
+</script>
+</body>
+</html>

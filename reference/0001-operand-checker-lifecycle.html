@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Operand Checker Lifecycle</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main>
+  <header>
+    <p class="small"><a href="../lessons/0001-how-the-checker-uses-operands.html">Lesson 0001</a></p>
+    <h1>Operand Checker Lifecycle</h1>
+    <p class="lede">A quick reference for how Odin's checker creates, mutates, stores, and consumes operands.</p>
+  </header>
+
+  <h2>The Shape</h2>
+  <p>An <code>Operand</code> is a temporary semantic result used while checking an expression. It carries <code>mode</code>, <code>type</code>, optional <code>value</code>, source <code>expr</code>, and special payloads for builtins or procedure groups. Source: <a href="../src/checker.hpp#L76">src/checker.hpp:76</a>.</p>
+
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Meaning</th><th>Typical consumer question</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>mode</code></td><td>How this expression may be used.</td><td>Is this a value, variable, constant, type, builtin, or invalid?</td></tr>
+      <tr><td><code>type</code></td><td>The semantic type after checking.</td><td>Can it be assigned, converted, called, indexed, or used as a condition?</td></tr>
+      <tr><td><code>value</code></td><td>Compile-time value when available.</td><td>Can this constant fold, choose a <code>when</code> branch, or satisfy a bound?</td></tr>
+      <tr><td><code>expr</code></td><td>The AST expression responsible for the operand.</td><td>Where should diagnostics and untyped updates attach?</td></tr>
+      <tr><td><code>builtin_id</code></td><td>Which builtin procedure was named.</td><td>Which builtin checker path should handle a call?</td></tr>
+      <tr><td><code>proc_group</code></td><td>Which overload set was named.</td><td>Can context choose one concrete procedure?</td></tr>
+    </tbody>
+  </table>
+
+  <h2>The Loop</h2>
+  <div class="trace">
+    <p><strong>1. Produce:</strong> recursive expression code fills an <code>Operand *</code>. Identifiers are a compact example: constants become <code>Addressing_Constant</code>, variables become <code>Addressing_Variable</code>, type names become <code>Addressing_Type</code>, and unresolved overload sets become <code>Addressing_ProcGroup</code>. Source: <a href="../src/check_expr.cpp#L1841">src/check_expr.cpp:1841</a>.</p>
+    <p><strong>2. Normalize:</strong> wrapper functions reject modes that are illegal in the current expression context. <code>check_expr</code> rejects no-value and type operands, then rejects tuples where a single value is expected. Source: <a href="../src/check_expr.cpp#L12614">src/check_expr.cpp:12614</a>.</p>
+    <p><strong>3. Store:</strong> <code>check_expr_base</code> records the result on the AST with <code>add_type_and_value</code>. Untyped expressions also get side-table information for later updates. Sources: <a href="../src/check_expr.cpp#L12580">src/check_expr.cpp:12580</a>, <a href="../src/checker.cpp#L1893">src/checker.cpp:1893</a>, <a href="../src/checker.cpp#L1925">src/checker.cpp:1925</a>.</p>
+    <p><strong>4. Consume:</strong> statements and declarations ask specific questions of the operand. <code>when</code> requires a constant boolean; <code>if</code> requires a boolean value; assignments compare left and right operands. Sources: <a href="../src/check_stmt.cpp#L676">src/check_stmt.cpp:676</a>, <a href="../src/check_stmt.cpp#L2581">src/check_stmt.cpp:2581</a>, <a href="../src/check_stmt.cpp#L2518">src/check_stmt.cpp:2518</a>.</p>
+  </div>
+
+  <h2>Transfer To A C Checker</h2>
+  <p>Use an operand-like struct as the return channel for expression checking. Keep it small and explicit: value category, type, constant value, and source node. Then write context checkers that ask narrow questions: "is this assignable?", "is this scalar?", "is this integer constant expression?", "is this an lvalue?".</p>
+
+  <h2>Rule Of Thumb</h2>
+  <p>Do not think of operands as runtime machine operands. In this checker, they are semantic control packets that let each enclosing syntax form decide what kind of expression it needed.</p>
+</main>
+</body>
+</html>

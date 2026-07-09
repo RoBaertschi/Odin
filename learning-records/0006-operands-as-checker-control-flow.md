@@ -1,0 +1,3 @@
+# Operands as checker control flow
+
+The learner is moving from "operands represent checked expression results" to "operands are how the checker routes context-specific decisions." Odin expression checking fills a mutable `Operand *`, wrapper entrypoints normalize illegal modes for the requested context, `check_expr_base` records stable facts on the AST as `TypeAndValue`, and enclosing checkers consume the operand by asking narrow questions about `mode`, `type`, and `value`. This is the transferable pattern for a C compiler: expression checking should produce an operand-like semantic packet, while assignment, condition, call, and constant-expression contexts should validate that packet according to their own rules.
